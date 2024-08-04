@@ -4,6 +4,14 @@ from rest_framework import status
 from .models import Payment
 from .serializers import PaymentSerializer
 import mercadopago
+# {
+#   "transaction_amount": 1,
+#   "description": "Teste novo",
+#   "paymentMethodId": "pix",
+#   "email": "anthonylocheifc@gmail.com",
+#   "identificationType": "CPF",
+#   "number": 11345562926    
+#}
 
 sdk = mercadopago.SDK('APP_USR-942949289577962-050812-4019ece557a9f806f53560a6aa186e7a-1138000306')
 
@@ -41,3 +49,26 @@ class CreatePixPaymentView(APIView):
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         else:
             return Response(payment, status=status.HTTP_400_BAD_REQUEST)
+
+class WebhookView(APIView):
+    def post(self, request, *args, **kwargs):
+        payment_id = request.data.get('data', {}).get('id')
+        if payment_id:
+            payment_response = sdk.payment().get(payment_id)
+            payment = payment_response["response"]
+
+            # Atualizar o pagamento no banco de dados
+            payment_instance, created = Payment.objects.update_or_create(
+                payment_id=payment['id'],
+                defaults={
+                    'transaction_amount': payment['transaction_amount'],
+                    'description': payment['description'],
+                    'status': payment['status'],
+                    'payment_method': payment['payment_method_id'],
+                    'payer_email': payment['payer']['email']
+                }
+            )
+
+            return Response({'message': 'Payment updated'}, status=status.HTTP_200_OK)
+        else:
+            return Response({'error': 'Invalid payment ID'}, status=status.HTTP_400_BAD_REQUEST)
